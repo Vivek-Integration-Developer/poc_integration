@@ -19,6 +19,11 @@ class FusionValidationClient:
             "projectNumber": record.c10,
             "poLineNum": record.c4
         }
+        print(f"FusionValidationClient.validate_po -> POST {self.url} payload: {payload}")
         resp = requests.post(self.url, json=payload)
+        print(
+            "FusionValidationClient.validate_po <-",
+            f"status {getattr(resp, 'status_code', 'unknown')} response: {getattr(resp, 'text', '')}",
+        )
         raw = resp.json() if resp.ok else {}
         return payload, ValidationResult(raw)

@@ -23,6 +23,7 @@ scheduler = BlockingScheduler()
 
 def step_job():
     today = datetime.now().strftime("%Y-%m-%d")
+    print(f"Starting job for {today}")
     records = unifier.fetch_records(today)
     if not records:
         logger.info("No new records to process.")
@@ -31,16 +32,19 @@ def step_job():
     for idx, rec in enumerate(records, start=1):
         seq_base = f"1.{idx}"
         # Step 1
+        print(f"Record {idx}: starting Step 1 - update INT READ flag")
         flag_msg = "The POC record has been read..."
         auditor.log(unique_id, "FUS_Step1_Req_UpdateIntRead", "Open", "Request",
                     rec.c10, rec.c11, "", "INT Inprogress", f"{seq_base}.1", "POC",
                     unifier.build_flag_payload(rec, "INT READ", 1, flag_msg))
         resp_flag = unifier.update_flag(rec, "INT READ", 1, flag_msg)
+        print(f"Record {idx}: Step 1 completed")
         auditor.log(unique_id, "FUS_Step1_Res_UpdateIntRead", "Closed", "Response",
                     rec.c10, rec.c11, "", "INT Inprogress", f"{seq_base}.2", "POC",
                     resp_flag.json())
 
         # Step 2
+        print(f"Record {idx}: starting Step 2 - validate PO")
         payload_val, val_res = validator.validate_po(rec)
         auditor.log(unique_id, "FUS_Step2_Req_ValidatePO", "Open", "Request",
                     rec.c10, rec.c11, "", "INT Inprogress", f"{seq_base}.3", "POC",
@@ -48,6 +52,7 @@ def step_job():
         auditor.log(unique_id, "FUS_Step2_Res_ValidatePO", "Closed", "Response",
                     rec.c10, rec.c11, "", "INT Inprogress", f"{seq_base}.4", "POC",
                     val_res.raw)
+        print(f"Record {idx}: Step 2 completed")
 
         if not val_res.g1 or val_res.po_status != "OPEN":
             err_msg = "The POC record validation failed.."
@@ -58,9 +63,11 @@ def step_job():
             auditor.log(unique_id, "FUS_Step2_Res_UpdateIntError", "Closed", "Response",
                         rec.c10, rec.c11, "", "INT Inprogress", f"{seq_base}.6", "POC",
                         resp_err.json())
+            print(f"Record {idx}: Step 2 validation failed")
             continue
 
         # Step 3
+        print(f"Record {idx}: starting Step 3 - create receipt")
         payload_rcpt, rcpt_res = receipt_client.create_receipt(rec, val_res)
         auditor.log(unique_id, "FUS_Step3_Req_CreateReceipt", "Open", "Request",
                     rec.c10, rec.c11, "", "INT Inprogress", f"{seq_base}.7", "POC",
@@ -68,6 +75,7 @@ def step_job():
         auditor.log(unique_id, "FUS_Step3_Res_CreateReceipt", "Closed", "Response",
                     rec.c10, rec.c11, rcpt_res.number or "", "INT Inprogress", f"{seq_base}.8", "POC",
                     rcpt_res.raw)
+        print(f"Record {idx}: Step 3 receipt creation returned {rcpt_res.status}")
 
         if rcpt_res.status == "SUCCESS":
             comp_msg = "Receipt Created Successfully"
@@ -78,6 +86,7 @@ def step_job():
             auditor.log(unique_id, "FUS_Step3_Res_UpdateIntComplete", "Closed", "Response",
                         rec.c10, rec.c11, rcpt_res.number, "INT Inprogress", f"{seq_base}.10", "POC",
                         resp_comp.json())
+            print(f"Record {idx}: Step 3 completed successfully")
         else:
             err3 = f"Receipt Creation Failed: {rcpt_res.message}"
             auditor.log(unique_id, "FUS_Step3_Req_UpdateIntError", "Open", "Request",
@@ -87,6 +96,7 @@ def step_job():
             auditor.log(unique_id, "FUS_Step3_Res_UpdateIntError", "Closed", "Response",
                         rec.c10, rec.c11, "", "INT Inprogress", f"{seq_base}.10", "POC",
                         resp_err3.json())
+            print(f"Record {idx}: Step 3 failed - {rcpt_res.message}")
 
 scheduler.add_job(step_job, "interval", minutes=POLL_INTERVAL_MINUTES)
 logger.info(f"Scheduler started with run ID {unique_id}")

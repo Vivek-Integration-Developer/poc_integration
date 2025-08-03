@@ -54,6 +54,13 @@ class FusionReceiptClient:
                 }
             ]
         }
+        print(
+            f"FusionReceiptClient.create_receipt -> POST {self.url} payload: {payload}"
+        )
         resp = requests.post(self.url, json=payload, auth=self.auth, headers=self.headers)
+        print(
+            "FusionReceiptClient.create_receipt <-",
+            f"status {getattr(resp, 'status_code', 'unknown')} response: {getattr(resp, 'text', '')}",
+        )
         raw = resp.json() if resp.ok else {}
         return payload, ReceiptResult(raw)

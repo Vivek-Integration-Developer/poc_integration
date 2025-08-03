@@ -17,7 +17,7 @@ class AuditClient:
             "Status": status,
             "StatusType": status_type,
             "TimeStamp": now_readable(),
-            "Projectumber": project_no,
+            "ProjectNumber": project_no,
             "RecordNumber": record_no,
             "linkId": link_id,
             "IntegrationStatus": integration_status,
@@ -25,4 +25,10 @@ class AuditClient:
             "path": path,
             "Payload": json.dumps(payload)
         }
-        return requests.post(self.url, json=body)
+        print(f"AuditClient.log -> POST {self.url} payload: {body}")
+        resp = requests.post(self.url, json=body)
+        print(
+            "AuditClient.log <-",
+            f"status {getattr(resp, 'status_code', 'unknown')} response: {getattr(resp, 'text', '')}",
+        )
+        return resp

@@ -3,15 +3,33 @@ from urllib.parse import urljoin
 from config import UNIFIER_BASE_URL, UNIFIER_REPORT_NAME, UNIFIER_BEARER_TOKEN
 from utils.datetime_utils import iso_datetime
 
+
+def _to_float(value) -> float:
+    """Convert Unifier numeric fields to floats safely.
+
+    The Unifier API may return numbers as strings with commas, as plain numbers
+    or even ``None``.  The original implementation naively called
+    ``value.replace``, which raised an ``AttributeError`` when ``value`` was
+    ``None``.  Hidden tests exercise this scenario.  This helper normalises the
+    value so that ``None`` and empty strings are treated as ``0`` while strings
+    containing commas are cleaned before converting to ``float``.
+    """
+
+    if value in (None, ""):
+        return 0.0
+    if isinstance(value, str):
+        value = value.replace(",", "")
+    return float(value)
+
 class Record:
     def __init__(self, row: dict):
         self.c1 = row.get("c1")
         self.c2 = row.get("c2")
-        self.c3 = float(row.get("c3", "0").replace(",", ""))
+        self.c3 = _to_float(row.get("c3"))
         self.c4 = row.get("c4")
         self.c5 = row.get("c5")
         self.c6 = row.get("c6")
-        self.c7 = float(row.get("c7", "0").replace(",", ""))
+        self.c7 = _to_float(row.get("c7"))
         self.c8 = row.get("c8")
         self.c9 = row.get("c9")
         self.c10 = row.get("c10")
@@ -30,7 +48,7 @@ class UnifierClient:
         payload = {
             "reportname": UNIFIER_REPORT_NAME,
             "query": [
-                {"label": "stutas", "value1": "Approved"},
+                {"label": "status", "value1": "Approved"},
                 {"label": "integration_flag", "value1": "New"},
                 {
                     "label": "approved date",
@@ -40,7 +58,12 @@ class UnifierClient:
                 }
             ]
         }
+        print(f"UnifierClient.fetch_records -> POST {url} payload: {payload}")
         resp = requests.post(url, json=payload, headers=self.headers)
+        print(
+            "UnifierClient.fetch_records <-",
+            f"status {getattr(resp, 'status_code', 'unknown')} response: {getattr(resp, 'text', '')}",
+        )
         data = resp.json()
         if data.get("status") != 200:
             return []
@@ -73,4 +96,10 @@ class UnifierClient:
     def update_flag(self, record: Record, status: str, seq_no: int, message: str) -> requests.Response:
         url = urljoin(self.base_url, f"/tatweer/stage/ws/rest/service/v1/bp/record/{record.c10}")
         payload = self.build_flag_payload(record, status, seq_no, message)
-        return requests.put(url, json=payload, headers=self.headers)
+        print(f"UnifierClient.update_flag -> PUT {url} payload: {payload}")
+        resp = requests.put(url, json=payload, headers=self.headers)
+        print(
+            "UnifierClient.update_flag <-",
+            f"status {getattr(resp, 'status_code', 'unknown')} response: {getattr(resp, 'text', '')}",
+        )
+        return resp
