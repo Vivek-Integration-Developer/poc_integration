@@ -1,10 +1,10 @@
 import uuid
 import logging
 from datetime import datetime
-from apscheduler.schedulers.blocking import BlockingScheduler
+from apscheduler.schedulers.background import BackgroundScheduler
+from flask import Flask, request, jsonify
 
 from config import POLL_INTERVAL_MINUTES
-from utils.datetime_utils import now_readable
 from clients.unifier_client import UnifierClient
 from clients.audit_client import AuditClient
 from clients.fusion_validation_client import FusionValidationClient
@@ -13,18 +13,20 @@ from clients.fusion_receipt_client import FusionReceiptClient
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
+app = Flask(__name__)
+
 unique_id = str(uuid.uuid4())
 
 unifier = UnifierClient()
 auditor = AuditClient()
 validator = FusionValidationClient()
 receipt_client = FusionReceiptClient()
-scheduler = BlockingScheduler()
+scheduler = BackgroundScheduler()
 
-def step_job():
-    today = datetime.now().strftime("%Y-%m-%d")
-    print(f"Starting job for {today}")
-    records = unifier.fetch_records(today)
+
+def step_job(date_str: str) -> None:
+    print(f"Starting job for {date_str}")
+    records = unifier.fetch_records(date_str)
     if not records:
         logger.info("No new records to process.")
         return
@@ -98,6 +100,23 @@ def step_job():
                         resp_err3.json())
             print(f"Record {idx}: Step 3 failed - {rcpt_res.message}")
 
-scheduler.add_job(step_job, "interval", minutes=POLL_INTERVAL_MINUTES)
-logger.info(f"Scheduler started with run ID {unique_id}")
-scheduler.start()
+@app.post("/run")
+def run():
+    data = request.get_json() or {}
+    date_str = data.get("date")
+    try:
+        datetime.strptime(date_str, "%Y-%m-%d")
+    except (ValueError, TypeError):
+        return jsonify({"error": "Invalid date format. Use YYYY-MM-DD"}), 400
+    step_job(date_str)
+    return jsonify({"status": "Job started", "date": date_str})
+
+if __name__ == "__main__":
+    scheduler.add_job(
+        lambda: step_job(datetime.now().strftime("%Y-%m-%d")),
+        "interval",
+        minutes=POLL_INTERVAL_MINUTES,
+    )
+    logger.info(f"Scheduler started with run ID {unique_id}")
+    scheduler.start()
+    app.run(host="0.0.0.0", port=5000)
